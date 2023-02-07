@@ -40,9 +40,9 @@ contract Voting is Ownable {
     event Voted(address voter, uint256 proposalId);
 
     event VoterUnRegistered(address voterAddress);
+    event winningProposal(uint256 proposalId);
 
     constructor() {
-        //TODO L’administrateur est celui qui va déployer le smart contract.
         voteStatus = WorkflowStatus.RegisteringVoters;
     }
 
@@ -61,11 +61,15 @@ contract Voting is Ownable {
     }
 
     modifier onlyAddressRegistered(address _address) {
-        require(whitelist[_address].isRegistered, "the user is not registered");
+        require(
+            whitelist[_address].isRegistered,
+            "this address is not registered"
+        );
         _;
     }
 
     modifier checkWorkflowStatus(WorkflowStatus _status) {
+        //TODO pour faire propre
         //string msg =WorkflowStatus[_status].toString();
         require(_status == voteStatus, "This is not the right period");
         _;
@@ -207,6 +211,7 @@ contract Voting is Ownable {
         return voteStatus;
     }
 
+    //TODO faire propre
     /*function retrieveWorkflowStatus2() public view onlyOwner returns (string memory) {
         return WorkflowStatus[voteStatus].toString();
     }*/
@@ -223,7 +228,7 @@ Feature
         checkWorkflowStatus(WorkflowStatus.ProposalsRegistrationStarted)
     {
         proposals.push(Proposal(_proposal, 0));
-        emit ProposalRegistered(proposals.length); // not length-1 because we wwant 1, 2,... not 0, 1,...
+        emit ProposalRegistered(proposals.length - 1); // we count proposal 0, 1, 2 to make it easier
     }
 
     function vote(uint256 _proposalId)
@@ -232,10 +237,13 @@ Feature
         checkWorkflowStatus(WorkflowStatus.VotingSessionStarted)
     {
         require(!whitelist[msg.sender].hasVoted, "You have already voted");
-        require(proposals.length >= _proposalId, "The proposal doesn't exist");
+        require(
+            _proposalId >= 0 && (proposals.length - 1) >= _proposalId,
+            "The proposalId doesn't exist"
+        );
         whitelist[msg.sender].hasVoted = true;
         whitelist[msg.sender].votedProposalId = _proposalId;
-        proposals[_proposalId - 1].voteCount++; // id-1 because display 1-2 not 0,1..
+        proposals[_proposalId].voteCount++;
         emit Voted(msg.sender, _proposalId);
     }
 
@@ -246,13 +254,12 @@ Feature
     {
         uint256 winner = 0;
         for (uint256 i = 1; i < proposals.length; i++) {
-            //start at 1 because 0 is our initial winingproposalId
-            if (
-                proposals[i].voteCount > proposals[winningProposalId].voteCount
-            ) {
-                winningProposalId = i;
+            //start at 1 because 0 is our initial winner
+            if (proposals[i].voteCount > proposals[winner].voteCount) {
+                winner = i;
             }
         }
-        winningProposalId = winner + 1; //display +1
+        winningProposalId = winner;
+        emit winningProposal(winningProposalId);
     }
 }
