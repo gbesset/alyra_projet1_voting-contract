@@ -44,4 +44,14 @@ contract Voting is Ownable {
     function getWinner() public view returns (uint256) {
         return winningProposalId;
     }
+
+    function authorize(address _address) public onlyOwner {
+        require(!whitelist[_address], "Address is already white listed");
+        whitelist[_address] = true;
+        emit VoterRegistered(_address);
+    }
+
+    function isWhitelisted(address _address) public view returns (bool) {
+        return whitelist[_address];
+    }
 }
