@@ -29,7 +29,7 @@ contract Voting is Ownable {
     uint256 private winningProposalId; //private ou pas ? sert a rien..
     WorkflowStatus private voteStatus;
     mapping(address => Voter) private whitelist;
-    Proposal[] private proposals;
+    Proposal[] public proposals;
 
     event VoterRegistered(address voterAddress);
     event WorkflowStatusChange(
@@ -46,7 +46,12 @@ contract Voting is Ownable {
         voteStatus = WorkflowStatus.RegisteringVoters;
     }
 
-    function getWinner() public view returns (uint256) {
+    function getWinner()
+        public
+        view
+        checkWorkflowStatus(WorkflowStatus.VotesTallied)
+        returns (uint256)
+    {
         return winningProposalId;
     }
 
@@ -57,6 +62,12 @@ contract Voting is Ownable {
 
     modifier onlyAddressRegistered(address _address) {
         require(whitelist[_address].isRegistered, "the user is not registered");
+        _;
+    }
+
+    modifier checkWorkflowStatus(WorkflowStatus _status) {
+        //string msg =WorkflowStatus[_status].toString();
+        require(_status == voteStatus, "This is not the right period");
         _;
     }
 
@@ -164,6 +175,10 @@ contract Voting is Ownable {
             WorkflowStatus.VotingSessionEnded == voteStatus,
             "You can't change the status if you're not in VotingSessionEnded status"
         );
+
+        //calculate winning vote
+        countingVotes();
+
         voteStatus = WorkflowStatus.VotesTallied;
         emit WorkflowStatusChange(
             WorkflowStatus.VotingSessionEnded,
@@ -192,13 +207,52 @@ contract Voting is Ownable {
         return voteStatus;
     }
 
-    function sendProposal(string memory _proposal) public isRegistered {
-        require(
-            WorkflowStatus.ProposalsRegistrationStarted == voteStatus,
-            "This is not the proposal period...."
-        );
+    /*function retrieveWorkflowStatus2() public view onlyOwner returns (string memory) {
+        return WorkflowStatus[voteStatus].toString();
+    }*/
+
+    /*
+******************
+Feature
+*****************
+*/
+
+    function sendProposal(string memory _proposal)
+        public
+        onlyRegistered
+        checkWorkflowStatus(WorkflowStatus.ProposalsRegistrationStarted)
+    {
         proposals.push(Proposal(_proposal, 0));
-        emit ProposalRegistered(proposals.length - 1);
-        //passer par MAPPING ?
+        emit ProposalRegistered(proposals.length); // not length-1 because we wwant 1, 2,... not 0, 1,...
+    }
+
+    function vote(uint256 _proposalId)
+        public
+        onlyRegistered
+        checkWorkflowStatus(WorkflowStatus.VotingSessionStarted)
+    {
+        require(!whitelist[msg.sender].hasVoted, "You have already voted");
+        require(proposals.length >= _proposalId, "The proposal doesn't exist");
+        whitelist[msg.sender].hasVoted = true;
+        whitelist[msg.sender].votedProposalId = _proposalId;
+        proposals[_proposalId - 1].voteCount++; // id-1 because display 1-2 not 0,1..
+        emit Voted(msg.sender, _proposalId);
+    }
+
+    function countingVotes()
+        internal
+        onlyOwner
+        checkWorkflowStatus(WorkflowStatus.VotingSessionEnded)
+    {
+        uint256 winner = 0;
+        for (uint256 i = 1; i < proposals.length; i++) {
+            //start at 1 because 0 is our initial winingproposalId
+            if (
+                proposals[i].voteCount > proposals[winningProposalId].voteCount
+            ) {
+                winningProposalId = i;
+            }
+        }
+        winningProposalId = winner + 1; //display +1
     }
 }
