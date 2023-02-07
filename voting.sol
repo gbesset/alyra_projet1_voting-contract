@@ -60,9 +60,11 @@ contract Voting is Ownable {
         _;
     }
 
-    /*
-     L'administrateur du vote enregistre une liste blanche d'électeurs identifiés par leur adresse Ethereum.
-     */
+    /* 
+*******************************
+        Whitelist management
+*******************************
+*/
 
     function authorise(address _address) public onlyOwner {
         require(
@@ -104,8 +106,10 @@ contract Voting is Ownable {
     }
 
     /*
-        L'administrateur du vote commence la session d'enregistrement de la proposition.
-    */
+********************************
+        Workflow status Management
+********************************
+*/
 
     function startProposals() public onlyOwner {
         require(
