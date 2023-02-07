@@ -27,7 +27,9 @@ contract Voting is Ownable {
     }
 
     uint256 private winningProposalId; //private ou pas ? sert a rien..
+    WorkflowStatus private voteStatus;
     mapping(address => Voter) private whitelist;
+    Proposal[] private proposals;
 
     event VoterRegistered(address voterAddress);
     event WorkflowStatusChange(
@@ -41,19 +43,28 @@ contract Voting is Ownable {
 
     constructor() {
         //TODO L’administrateur est celui qui va déployer le smart contract.
+        voteStatus = WorkflowStatus.RegisteringVoters;
     }
 
     function getWinner() public view returns (uint256) {
         return winningProposalId;
     }
 
-    modifier isRegistered(address _address) {
+    modifier onlyRegistered() {
         require(whitelist[msg.sender].isRegistered, "You are not registered");
+        _;
+    }
+
+    modifier onlyAddressRegistered(address _address) {
         require(whitelist[_address].isRegistered, "the user is not registered");
         _;
     }
 
-    function authorize(address _address) public onlyOwner {
+    /*
+     L'administrateur du vote enregistre une liste blanche d'électeurs identifiés par leur adresse Ethereum.
+     */
+
+    function authorise(address _address) public onlyOwner {
         require(
             !whitelist[_address].isRegistered,
             "Address is already registered"
@@ -62,34 +73,128 @@ contract Voting is Ownable {
         emit VoterRegistered(_address);
     }
 
-    function unregister(address _address) public onlyOwner {
+    function unAuthorise(address _address) public onlyOwner {
         require(whitelist[_address].isRegistered, "Address is not registered");
         whitelist[_address].isRegistered = false;
         emit VoterUnRegistered(_address);
     }
 
     function isWhitelisted(address _address) public view returns (bool) {
-        //Everybody can know if someone is whitelisted
         return whitelist[_address].isRegistered;
     }
 
     function hasVoted(address _address)
         public
         view
-        isRegistered(_address)
+        onlyRegistered
+        onlyAddressRegistered(_address)
         returns (bool)
     {
-        //only whitelisted people  can access that data on registered user
         return whitelist[_address].hasVoted;
     }
 
     function votedForProposalId(address _address)
         public
         view
-        isRegistered(_address)
+        onlyRegistered
+        onlyAddressRegistered(_address)
         returns (uint256)
     {
-        //only whitelisted people  can access that data on registered user
         return whitelist[_address].votedProposalId;
+    }
+
+    /*
+        L'administrateur du vote commence la session d'enregistrement de la proposition.
+    */
+
+    function startProposals() public onlyOwner {
+        require(
+            WorkflowStatus.RegisteringVoters == voteStatus,
+            "You can't change the status if you're not in RegisteringVoters status"
+        );
+        voteStatus = WorkflowStatus.ProposalsRegistrationStarted;
+        emit WorkflowStatusChange(
+            WorkflowStatus.RegisteringVoters,
+            WorkflowStatus.ProposalsRegistrationStarted
+        );
+    }
+
+    function endProposals() public onlyOwner {
+        require(
+            WorkflowStatus.ProposalsRegistrationStarted == voteStatus,
+            "You can't change the status if you're not in ProposalsRegistrationStarted status"
+        );
+        voteStatus = WorkflowStatus.ProposalsRegistrationEnded;
+        emit WorkflowStatusChange(
+            WorkflowStatus.ProposalsRegistrationStarted,
+            WorkflowStatus.ProposalsRegistrationEnded
+        );
+    }
+
+    function startVotes() public onlyOwner {
+        require(
+            WorkflowStatus.ProposalsRegistrationEnded == voteStatus,
+            "You can't change the status if you're not in ProposalsRegistrationEnded status"
+        );
+        voteStatus = WorkflowStatus.VotingSessionStarted;
+        emit WorkflowStatusChange(
+            WorkflowStatus.ProposalsRegistrationEnded,
+            WorkflowStatus.VotingSessionStarted
+        );
+    }
+
+    function endVotes() public onlyOwner {
+        require(
+            WorkflowStatus.VotingSessionStarted == voteStatus,
+            "You can't change the status if you're not in VotingSessionStarted status"
+        );
+        voteStatus = WorkflowStatus.VotingSessionEnded;
+        emit WorkflowStatusChange(
+            WorkflowStatus.VotingSessionStarted,
+            WorkflowStatus.VotingSessionEnded
+        );
+    }
+
+    function countVotes() public onlyOwner {
+        require(
+            WorkflowStatus.VotingSessionEnded == voteStatus,
+            "You can't change the status if you're not in VotingSessionEnded status"
+        );
+        voteStatus = WorkflowStatus.VotesTallied;
+        emit WorkflowStatusChange(
+            WorkflowStatus.VotingSessionEnded,
+            WorkflowStatus.VotesTallied
+        );
+    }
+
+    function restartVoteSession() public onlyOwner {
+        require(
+            WorkflowStatus.VotesTallied == voteStatus,
+            "You can't change the status if you're not in VotesTallied status"
+        );
+        voteStatus = WorkflowStatus.RegisteringVoters;
+        emit WorkflowStatusChange(
+            WorkflowStatus.VotesTallied,
+            WorkflowStatus.RegisteringVoters
+        );
+    }
+
+    function retrieveWorkflowStatus()
+        public
+        view
+        onlyOwner
+        returns (WorkflowStatus)
+    {
+        return voteStatus;
+    }
+
+    function sendProposal(string memory _proposal) public isRegistered {
+        require(
+            WorkflowStatus.ProposalsRegistrationStarted == voteStatus,
+            "This is not the proposal period...."
+        );
+        proposals.push(Proposal(_proposal, 0));
+        emit ProposalRegistered(proposals.length - 1);
+        //passer par MAPPING ?
     }
 }
