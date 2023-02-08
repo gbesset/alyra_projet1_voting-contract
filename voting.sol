@@ -294,4 +294,13 @@ Feature
     {
         return winningProposalId;
     }
+
+    function getWinnerDetails()
+        public
+        view
+        checkWorkflowStatus(WorkflowStatus.VotesTallied)
+        returns (Proposal memory)
+    {
+        return proposals[winningProposalId];
+    }
 }
