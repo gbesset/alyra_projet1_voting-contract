@@ -3,6 +3,7 @@
 pragma solidity 0.8.18;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
 
 contract Voting is Ownable {
     struct Voter {
@@ -29,13 +30,15 @@ contract Voting is Ownable {
         string name;
         uint256 winningProposalId;
         WorkflowStatus voteStatus;
-        mapping(address => Voter) whitelist;
-        Proposal[] proposals;
     }
 
     // current voting session ID
     uint256 sessionId;
-    VoteSession[] voteSession;
+    mapping(uint256 => VoteSession) voteSession;
+    //Passé beaucoup de temps a me casser les dents pour mettre ma whiteList et Proposals dans ma struc en vain....
+    //si possible et une idée je suis preneur. tkx
+    mapping(uint256 => mapping(address => Voter)) voteSessionWhitelist;
+    mapping(uint256 => Proposal[]) voteSessionProposals;
 
     event VoteSessionCreated(string _name);
     event VoterRegistered(address voterAddress);
@@ -50,12 +53,15 @@ contract Voting is Ownable {
     event winningProposal(uint256 proposalId);
 
     constructor() {
+        //Initialise the first Vote Session
         // Active the period RegisteringVoters  when contract is deployed. No admin function to do it
         // admin is not whitelist by default. just an admin
-
-        voteSession.push(VoteSession());
         sessionId = 0;
+        voteSession[sessionId].name = "Initial vote Session";
+        voteSession[sessionId].winningProposalId = 0;
         voteSession[sessionId].voteStatus = WorkflowStatus.RegisteringVoters;
+
+        //voteSession[sessionId] = VoteSession("Initial vote Session", 0, WorkflowStatus.RegisteringVoters, new Proposal[](0));
     }
 
     /* 
@@ -66,7 +72,7 @@ contract Voting is Ownable {
 
     modifier onlyRegistered() {
         require(
-            voteSession[sessionId].whitelist[msg.sender].isRegistered,
+            voteSessionWhitelist[sessionId][msg.sender].isRegistered,
             "You are not registered"
         );
         _;
@@ -74,7 +80,7 @@ contract Voting is Ownable {
 
     modifier onlyRegisteredAddress(address _address) {
         require(
-            voteSession[sessionId].whitelist[_address].isRegistered,
+            voteSessionWhitelist[sessionId][_address].isRegistered,
             "this address is not registered"
         );
         _;
@@ -111,10 +117,14 @@ contract Voting is Ownable {
         onlyOwner
         checkWorkflowStatus(WorkflowStatus.VotesTallied)
     {
-        voteSession.push(VoteSession(_name));
         sessionId++;
+        voteSession[sessionId].name = _name;
+        voteSession[sessionId].winningProposalId = 0;
         voteSession[sessionId].voteStatus = WorkflowStatus.RegisteringVoters;
     }
+
+    //get sessionId
+    //get Proposal
 
     /* 
 *******************************
@@ -128,10 +138,10 @@ contract Voting is Ownable {
         checkWorkflowStatus(WorkflowStatus.RegisteringVoters)
     {
         require(
-            !voteSession[sessionId].whitelist[_address].isRegistered,
+            !voteSessionWhitelist[sessionId][_address].isRegistered,
             "Address is already registered"
         );
-        voteSession[sessionId].whitelist[_address].isRegistered = true;
+        voteSessionWhitelist[sessionId][_address].isRegistered = true;
         emit VoterRegistered(_address);
     }
 
@@ -141,15 +151,15 @@ contract Voting is Ownable {
         checkWorkflowStatus(WorkflowStatus.RegisteringVoters)
     {
         require(
-            voteSession[sessionId].whitelist[_address].isRegistered,
+            voteSessionWhitelist[sessionId][_address].isRegistered,
             "Address is not registered"
         );
-        voteSession[sessionId].whitelist[_address].isRegistered = false;
+        voteSessionWhitelist[sessionId][_address].isRegistered = false;
         emit VoterUnRegistered(_address);
     }
 
     function isWhitelisted(address _address) public view returns (bool) {
-        return voteSession[sessionId].whitelist[_address].isRegistered;
+        return voteSessionWhitelist[sessionId][_address].isRegistered;
     }
 
     function hasVoted(address _address)
@@ -159,7 +169,7 @@ contract Voting is Ownable {
         onlyRegisteredAddress(_address)
         returns (bool)
     {
-        return voteSession[sessionId].whitelist[_address].hasVoted;
+        return voteSessionWhitelist[sessionId][_address].hasVoted;
     }
 
     function votedForProposalId(address _address)
@@ -169,7 +179,7 @@ contract Voting is Ownable {
         onlyRegisteredAddress(_address)
         returns (uint256)
     {
-        return voteSession[sessionId].whitelist[_address].votedProposalId;
+        return voteSessionWhitelist[sessionId][_address].votedProposalId;
     }
 
     /*
@@ -257,7 +267,13 @@ contract Voting is Ownable {
     }
 
     function retrieveWorkflowStatus() public view returns (string memory) {
-        return getVoteStatusString(voteSession[sessionId].voteStatus);
+        return
+            string.concat(
+                "SessionId: ",
+                Strings.toString(sessionId),
+                "  Period:",
+                getVoteStatusString(voteSession[sessionId].voteStatus)
+            );
     }
 
     function getVoteStatusString(WorkflowStatus _status)
@@ -293,8 +309,8 @@ Feature
         onlyRegistered
         checkWorkflowStatus(WorkflowStatus.ProposalsRegistrationStarted)
     {
-        voteSession[sessionId].proposals.push(Proposal(_proposal, 0));
-        emit ProposalRegistered(voteSession[sessionId].proposals.length - 1); // we count proposal 0, 1, 2 to make it easier
+        voteSessionProposals[sessionId].push(Proposal(_proposal, 0));
+        emit ProposalRegistered(voteSessionProposals[sessionId].length - 1); // we count proposal 0, 1, 2 to make it easier
     }
 
     function vote(uint256 _proposalId)
@@ -303,19 +319,18 @@ Feature
         checkWorkflowStatus(WorkflowStatus.VotingSessionStarted)
     {
         require(
-            !voteSession[sessionId].whitelist[msg.sender].hasVoted,
+            !voteSessionWhitelist[sessionId][msg.sender].hasVoted,
             "You have already voted"
         );
         require(
             _proposalId >= 0 &&
-                (voteSession[sessionId].proposals.length - 1) >= _proposalId,
+                (voteSessionProposals[sessionId].length - 1) >= _proposalId,
             "The proposalId doesn't exist"
         );
-        voteSession[sessionId].whitelist[msg.sender].hasVoted = true;
-        voteSession[sessionId]
-            .whitelist[msg.sender]
+        voteSessionWhitelist[sessionId][msg.sender].hasVoted = true;
+        voteSessionWhitelist[sessionId][msg.sender]
             .votedProposalId = _proposalId;
-        voteSession[sessionId].proposals[_proposalId].voteCount++;
+        voteSessionProposals[sessionId][_proposalId].voteCount++;
         emit Voted(msg.sender, _proposalId);
     }
 
@@ -325,11 +340,11 @@ Feature
         checkWorkflowStatus(WorkflowStatus.VotingSessionEnded)
     {
         uint256 winner = 0;
-        for (uint256 i = 1; i < voteSession[sessionId].proposals.length; i++) {
+        for (uint256 i = 1; i < voteSessionProposals[sessionId].length; i++) {
             //start at 1 because 0 is our initial winner
             if (
-                voteSession[sessionId].proposals[i].voteCount >
-                voteSession[sessionId].proposals[winner].voteCount
+                voteSessionProposals[sessionId][i].voteCount >
+                voteSessionProposals[sessionId][winner].voteCount
             ) {
                 winner = i;
             }
@@ -351,11 +366,16 @@ Feature
         public
         view
         checkWorkflowStatus(WorkflowStatus.VotesTallied)
-        returns (Proposal memory)
+        returns (string memory)
     {
-        return
-            voteSession[sessionId].proposals[
+        string memory message = string.concat(
+            "SessionId: ",
+            Strings.toString(sessionId),
+            "  Resultat: ",
+            voteSessionProposals[sessionId][
                 voteSession[sessionId].winningProposalId
-            ];
+            ].description
+        );
+        return message;
     }
 }
