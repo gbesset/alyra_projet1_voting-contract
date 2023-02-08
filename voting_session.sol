@@ -30,6 +30,8 @@ contract Voting is Ownable {
         string name;
         uint256 winningProposalId;
         WorkflowStatus voteStatus;
+        uint256 nbElector;
+        uint256 nbVotes;
     }
 
     // current voting session ID
@@ -60,6 +62,8 @@ contract Voting is Ownable {
         voteSession[sessionId].name = "Initial vote Session";
         voteSession[sessionId].winningProposalId = 0;
         voteSession[sessionId].voteStatus = WorkflowStatus.RegisteringVoters;
+        voteSession[sessionId].nbElector = 0;
+        voteSession[sessionId].nbVotes = 0;
 
         //voteSession[sessionId] = VoteSession("Initial vote Session", 0, WorkflowStatus.RegisteringVoters, new Proposal[](0));
     }
@@ -121,6 +125,8 @@ contract Voting is Ownable {
         voteSession[sessionId].name = _name;
         voteSession[sessionId].winningProposalId = 0;
         voteSession[sessionId].voteStatus = WorkflowStatus.RegisteringVoters;
+        voteSession[sessionId].nbElector = 0;
+        voteSession[sessionId].nbVotes = 0;
     }
 
     //get sessionId
@@ -142,6 +148,7 @@ contract Voting is Ownable {
             "Address is already registered"
         );
         voteSessionWhitelist[sessionId][_address].isRegistered = true;
+        voteSession[sessionId].nbElector++;
         emit VoterRegistered(_address);
     }
 
@@ -155,6 +162,7 @@ contract Voting is Ownable {
             "Address is not registered"
         );
         voteSessionWhitelist[sessionId][_address].isRegistered = false;
+        voteSession[sessionId].nbElector--;
         emit VoterUnRegistered(_address);
     }
 
@@ -193,6 +201,10 @@ contract Voting is Ownable {
         onlyOwner
         checkWorkflowStatusBeforeChange(WorkflowStatus.RegisteringVoters)
     {
+        require(
+            voteSession[sessionId].nbElector > 1,
+            "Need at least 2 electors to proceed to a vote"
+        );
         voteSession[sessionId].voteStatus = WorkflowStatus
             .ProposalsRegistrationStarted;
         emit WorkflowStatusChange(
@@ -208,6 +220,10 @@ contract Voting is Ownable {
             WorkflowStatus.ProposalsRegistrationStarted
         )
     {
+        require(
+            voteSessionProposals[sessionId].length > 1,
+            "Need at least 2 proposals to proceed to a vote"
+        );
         voteSession[sessionId].voteStatus = WorkflowStatus
             .ProposalsRegistrationEnded;
         emit WorkflowStatusChange(
@@ -235,6 +251,11 @@ contract Voting is Ownable {
         onlyOwner
         checkWorkflowStatusBeforeChange(WorkflowStatus.VotingSessionStarted)
     {
+        require(
+            (voteSession[sessionId].nbVotes * 2 >=
+                voteSession[sessionId].nbElector),
+            "Need at least 50% voters to end the vote"
+        );
         voteSession[sessionId].voteStatus = WorkflowStatus.VotingSessionEnded;
         emit WorkflowStatusChange(
             WorkflowStatus.VotingSessionStarted,
@@ -331,6 +352,7 @@ Feature
         voteSessionWhitelist[sessionId][msg.sender]
             .votedProposalId = _proposalId;
         voteSessionProposals[sessionId][_proposalId].voteCount++;
+        voteSession[sessionId].nbVotes++;
         emit Voted(msg.sender, _proposalId);
     }
 
