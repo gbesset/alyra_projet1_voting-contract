@@ -5,7 +5,6 @@ pragma solidity 0.8.18;
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract Voting is Ownable {
-    //QUESTION mettre les deinitions qq pat et importer !
     struct Voter {
         bool isRegistered;
         bool hasVoted;
@@ -26,8 +25,9 @@ contract Voting is Ownable {
         VotesTallied
     }
 
-    uint256 private winningProposalId; //private ou pas ? sert a rien..
-    WorkflowStatus private voteStatus;
+    // private because there is a function to get the value protected by a modifier that checks the end of vote
+    uint256 private winningProposalId;
+    WorkflowStatus public voteStatus;
     mapping(address => Voter) private whitelist;
     Proposal[] public proposals;
 
@@ -43,24 +43,23 @@ contract Voting is Ownable {
     event winningProposal(uint256 proposalId);
 
     constructor() {
+        // Active the period RegisteringVoters  when contract is deployed. No admin function to do it
+        // admin is not whitelist by default. just an admin
         voteStatus = WorkflowStatus.RegisteringVoters;
     }
 
-    function getWinner()
-        public
-        view
-        checkWorkflowStatus(WorkflowStatus.VotesTallied)
-        returns (uint256)
-    {
-        return winningProposalId;
-    }
+    /* 
+*******************************
+        modifiers
+*******************************
+*/
 
     modifier onlyRegistered() {
         require(whitelist[msg.sender].isRegistered, "You are not registered");
         _;
     }
 
-    modifier onlyAddressRegistered(address _address) {
+    modifier onlyRegisteredAddress(address _address) {
         require(
             whitelist[_address].isRegistered,
             "this address is not registered"
@@ -69,9 +68,22 @@ contract Voting is Ownable {
     }
 
     modifier checkWorkflowStatus(WorkflowStatus _status) {
-        //TODO pour faire propre
-        //string msg =WorkflowStatus[_status].toString();
-        require(_status == voteStatus, "This is not the right period");
+        string
+            memory message = "This is not the right period. You should be on: ";
+        require(
+            _status == voteStatus,
+            string.concat(message, getVoteStatusString(_status))
+        );
+        _;
+    }
+
+    modifier checkWorkflowStatusBeforeChange(WorkflowStatus _status) {
+        string
+            memory message = "You can't change the status if you're not in: ";
+        require(
+            _status == voteStatus,
+            string.concat(message, getVoteStatusString(_status))
+        );
         _;
     }
 
@@ -81,7 +93,11 @@ contract Voting is Ownable {
 *******************************
 */
 
-    function authorise(address _address) public onlyOwner {
+    function authorise(address _address)
+        public
+        onlyOwner
+        checkWorkflowStatus(WorkflowStatus.RegisteringVoters)
+    {
         require(
             !whitelist[_address].isRegistered,
             "Address is already registered"
@@ -90,7 +106,11 @@ contract Voting is Ownable {
         emit VoterRegistered(_address);
     }
 
-    function unAuthorise(address _address) public onlyOwner {
+    function unAuthorise(address _address)
+        public
+        onlyOwner
+        checkWorkflowStatus(WorkflowStatus.RegisteringVoters)
+    {
         require(whitelist[_address].isRegistered, "Address is not registered");
         whitelist[_address].isRegistered = false;
         emit VoterUnRegistered(_address);
@@ -104,7 +124,7 @@ contract Voting is Ownable {
         public
         view
         onlyRegistered
-        onlyAddressRegistered(_address)
+        onlyRegisteredAddress(_address)
         returns (bool)
     {
         return whitelist[_address].hasVoted;
@@ -114,7 +134,7 @@ contract Voting is Ownable {
         public
         view
         onlyRegistered
-        onlyAddressRegistered(_address)
+        onlyRegisteredAddress(_address)
         returns (uint256)
     {
         return whitelist[_address].votedProposalId;
@@ -126,11 +146,11 @@ contract Voting is Ownable {
 ********************************
 */
 
-    function startProposals() public onlyOwner {
-        require(
-            WorkflowStatus.RegisteringVoters == voteStatus,
-            "You can't change the status if you're not in RegisteringVoters status"
-        );
+    function startProposals()
+        public
+        onlyOwner
+        checkWorkflowStatusBeforeChange(WorkflowStatus.RegisteringVoters)
+    {
         voteStatus = WorkflowStatus.ProposalsRegistrationStarted;
         emit WorkflowStatusChange(
             WorkflowStatus.RegisteringVoters,
@@ -138,11 +158,13 @@ contract Voting is Ownable {
         );
     }
 
-    function endProposals() public onlyOwner {
-        require(
-            WorkflowStatus.ProposalsRegistrationStarted == voteStatus,
-            "You can't change the status if you're not in ProposalsRegistrationStarted status"
-        );
+    function endProposals()
+        public
+        onlyOwner
+        checkWorkflowStatusBeforeChange(
+            WorkflowStatus.ProposalsRegistrationStarted
+        )
+    {
         voteStatus = WorkflowStatus.ProposalsRegistrationEnded;
         emit WorkflowStatusChange(
             WorkflowStatus.ProposalsRegistrationStarted,
@@ -150,11 +172,13 @@ contract Voting is Ownable {
         );
     }
 
-    function startVotes() public onlyOwner {
-        require(
-            WorkflowStatus.ProposalsRegistrationEnded == voteStatus,
-            "You can't change the status if you're not in ProposalsRegistrationEnded status"
-        );
+    function startVotes()
+        public
+        onlyOwner
+        checkWorkflowStatusBeforeChange(
+            WorkflowStatus.ProposalsRegistrationEnded
+        )
+    {
         voteStatus = WorkflowStatus.VotingSessionStarted;
         emit WorkflowStatusChange(
             WorkflowStatus.ProposalsRegistrationEnded,
@@ -162,11 +186,11 @@ contract Voting is Ownable {
         );
     }
 
-    function endVotes() public onlyOwner {
-        require(
-            WorkflowStatus.VotingSessionStarted == voteStatus,
-            "You can't change the status if you're not in VotingSessionStarted status"
-        );
+    function endVotes()
+        public
+        onlyOwner
+        checkWorkflowStatusBeforeChange(WorkflowStatus.VotingSessionStarted)
+    {
         voteStatus = WorkflowStatus.VotingSessionEnded;
         emit WorkflowStatusChange(
             WorkflowStatus.VotingSessionStarted,
@@ -174,12 +198,11 @@ contract Voting is Ownable {
         );
     }
 
-    function countVotes() public onlyOwner {
-        require(
-            WorkflowStatus.VotingSessionEnded == voteStatus,
-            "You can't change the status if you're not in VotingSessionEnded status"
-        );
-
+    function countVotes()
+        public
+        onlyOwner
+        checkWorkflowStatusBeforeChange(WorkflowStatus.VotingSessionEnded)
+    {
         //calculate winning vote
         countingVotes();
 
@@ -190,31 +213,31 @@ contract Voting is Ownable {
         );
     }
 
-    function restartVoteSession() public onlyOwner {
-        require(
-            WorkflowStatus.VotesTallied == voteStatus,
-            "You can't change the status if you're not in VotesTallied status"
-        );
-        voteStatus = WorkflowStatus.RegisteringVoters;
-        emit WorkflowStatusChange(
-            WorkflowStatus.VotesTallied,
-            WorkflowStatus.RegisteringVoters
-        );
+    function retrieveWorkflowStatus() public view returns (string memory) {
+        return getVoteStatusString(voteStatus);
     }
 
-    function retrieveWorkflowStatus()
-        public
-        view
-        onlyOwner
-        returns (WorkflowStatus)
+    function getVoteStatusString(WorkflowStatus _status)
+        internal
+        pure
+        returns (string memory)
     {
-        return voteStatus;
+        if (_status == WorkflowStatus.RegisteringVoters) {
+            return "RegisteringVoters";
+        } else if (_status == WorkflowStatus.ProposalsRegistrationStarted) {
+            return "ProposalsRegistrationStarted";
+        } else if (_status == WorkflowStatus.ProposalsRegistrationEnded) {
+            return "ProposalsRegistrationEnded";
+        } else if (_status == WorkflowStatus.VotingSessionStarted) {
+            return "VotingSessionStarted";
+        } else if (_status == WorkflowStatus.VotingSessionEnded) {
+            return "VotingSessionEnded";
+        } else if (_status == WorkflowStatus.VotesTallied) {
+            return "VotesTallied";
+        } else {
+            return "Unknown status";
+        }
     }
-
-    //TODO faire propre
-    /*function retrieveWorkflowStatus2() public view onlyOwner returns (string memory) {
-        return WorkflowStatus[voteStatus].toString();
-    }*/
 
     /*
 ******************
@@ -261,5 +284,14 @@ Feature
         }
         winningProposalId = winner;
         emit winningProposal(winningProposalId);
+    }
+
+    function getWinner()
+        public
+        view
+        checkWorkflowStatus(WorkflowStatus.VotesTallied)
+        returns (uint256)
+    {
+        return winningProposalId;
     }
 }
