@@ -35,12 +35,12 @@ contract Voting is Ownable {
     }
 
     // current voting session ID
-    uint256 sessionId;
+    uint256 public sessionId;
     mapping(uint256 => VoteSession) voteSession;
     //Passé beaucoup de temps a me casser les dents pour mettre ma whiteList et Proposals dans ma struc en vain....
     //si possible et une idée je suis preneur. tkx
     mapping(uint256 => mapping(address => Voter)) voteSessionWhitelist;
-    mapping(uint256 => Proposal[]) voteSessionProposals;
+    mapping(uint256 => Proposal[]) public voteSessionProposals;
 
     event VoteSessionCreated(string _name);
     event VoterRegistered(address voterAddress);
@@ -53,20 +53,6 @@ contract Voting is Ownable {
 
     event VoterUnRegistered(address voterAddress);
     event winningProposal(uint256 proposalId);
-
-    constructor() {
-        //Initialise the first Vote Session
-        // Active the period RegisteringVoters  when contract is deployed. No admin function to do it
-        // admin is not whitelist by default. just an admin
-        sessionId = 0;
-        voteSession[sessionId].name = "Initial vote Session";
-        voteSession[sessionId].winningProposalId = 0;
-        voteSession[sessionId].voteStatus = WorkflowStatus.RegisteringVoters;
-        voteSession[sessionId].nbElector = 0;
-        voteSession[sessionId].nbVotes = 0;
-
-        //voteSession[sessionId] = VoteSession("Initial vote Session", 0, WorkflowStatus.RegisteringVoters, new Proposal[](0));
-    }
 
     /* 
 *******************************
@@ -95,7 +81,7 @@ contract Voting is Ownable {
             memory message = "This is not the right period. You should be on: ";
         require(
             _status == voteSession[sessionId].voteStatus,
-            string.concat(message, getVoteStatusString(_status))
+            string.concat(message, _getVoteStatusString(_status))
         );
         _;
     }
@@ -105,7 +91,7 @@ contract Voting is Ownable {
             memory message = "You can't change the status if you're not in: ";
         require(
             _status == voteSession[sessionId].voteStatus,
-            string.concat(message, getVoteStatusString(_status))
+            string.concat(message, _getVoteStatusString(_status))
         );
         _;
     }
@@ -116,11 +102,8 @@ contract Voting is Ownable {
 *******************************
 */
 
-    function createVoteSession(string memory _name)
-        internal
-        onlyOwner
-        checkWorkflowStatus(WorkflowStatus.VotesTallied)
-    {
+    //protected by a modifier when restart a session and by a require when first session
+    function _createVoteSession(string memory _name) internal onlyOwner {
         sessionId++;
         voteSession[sessionId].name = _name;
         voteSession[sessionId].winningProposalId = 0;
@@ -129,9 +112,6 @@ contract Voting is Ownable {
         voteSession[sessionId].nbVotes = 0;
     }
 
-    //get sessionId
-    //get Proposal
-
     /* 
 *******************************
         Whitelist management
@@ -139,7 +119,7 @@ contract Voting is Ownable {
 */
 
     function authorise(address _address)
-        public
+        external
         onlyOwner
         checkWorkflowStatus(WorkflowStatus.RegisteringVoters)
     {
@@ -153,7 +133,7 @@ contract Voting is Ownable {
     }
 
     function unAuthorise(address _address)
-        public
+        external
         onlyOwner
         checkWorkflowStatus(WorkflowStatus.RegisteringVoters)
     {
@@ -166,12 +146,12 @@ contract Voting is Ownable {
         emit VoterUnRegistered(_address);
     }
 
-    function isWhitelisted(address _address) public view returns (bool) {
+    function isWhitelisted(address _address) external view returns (bool) {
         return voteSessionWhitelist[sessionId][_address].isRegistered;
     }
 
     function hasVoted(address _address)
-        public
+        external
         view
         onlyRegistered
         onlyRegisteredAddress(_address)
@@ -181,7 +161,7 @@ contract Voting is Ownable {
     }
 
     function votedForProposalId(address _address)
-        public
+        external
         view
         onlyRegistered
         onlyRegisteredAddress(_address)
@@ -196,8 +176,14 @@ contract Voting is Ownable {
 ********************************
 */
 
+    function createVoteSession(string memory _name) external onlyOwner {
+        require(sessionId == 0, "It's not the first session creation....");
+        _createVoteSession(_name);
+        emit VoteSessionCreated(_name);
+    }
+
     function startProposals()
-        public
+        external
         onlyOwner
         checkWorkflowStatusBeforeChange(WorkflowStatus.RegisteringVoters)
     {
@@ -214,7 +200,7 @@ contract Voting is Ownable {
     }
 
     function endProposals()
-        public
+        external
         onlyOwner
         checkWorkflowStatusBeforeChange(
             WorkflowStatus.ProposalsRegistrationStarted
@@ -233,7 +219,7 @@ contract Voting is Ownable {
     }
 
     function startVotes()
-        public
+        external
         onlyOwner
         checkWorkflowStatusBeforeChange(
             WorkflowStatus.ProposalsRegistrationEnded
@@ -247,7 +233,7 @@ contract Voting is Ownable {
     }
 
     function endVotes()
-        public
+        external
         onlyOwner
         checkWorkflowStatusBeforeChange(WorkflowStatus.VotingSessionStarted)
     {
@@ -264,12 +250,12 @@ contract Voting is Ownable {
     }
 
     function countVotes()
-        public
+        external
         onlyOwner
         checkWorkflowStatusBeforeChange(WorkflowStatus.VotingSessionEnded)
     {
         //calculate winning vote
-        countingVotes();
+        _countingVotes();
 
         voteSession[sessionId].voteStatus = WorkflowStatus.VotesTallied;
         emit WorkflowStatusChange(
@@ -279,25 +265,25 @@ contract Voting is Ownable {
     }
 
     function restartVoteSession(string memory _name)
-        public
+        external
         onlyOwner
         checkWorkflowStatusBeforeChange(WorkflowStatus.VotesTallied)
     {
-        createVoteSession(_name);
+        _createVoteSession(_name);
         emit VoteSessionCreated(_name);
     }
 
-    function retrieveWorkflowStatus() public view returns (string memory) {
+    function retrieveWorkflowStatus() external view returns (string memory) {
         return
             string.concat(
                 "SessionId: ",
                 Strings.toString(sessionId),
                 "  Period:",
-                getVoteStatusString(voteSession[sessionId].voteStatus)
+                _getVoteStatusString(voteSession[sessionId].voteStatus)
             );
     }
 
-    function getVoteStatusString(WorkflowStatus _status)
+    function _getVoteStatusString(WorkflowStatus _status)
         internal
         pure
         returns (string memory)
@@ -326,16 +312,16 @@ Feature
 */
 
     function sendProposal(string memory _proposal)
-        public
+        external
         onlyRegistered
         checkWorkflowStatus(WorkflowStatus.ProposalsRegistrationStarted)
     {
         voteSessionProposals[sessionId].push(Proposal(_proposal, 0));
-        emit ProposalRegistered(voteSessionProposals[sessionId].length - 1); // we count proposal 0, 1, 2 to make it easier
+        emit ProposalRegistered(voteSessionProposals[sessionId].length - 1); //we count proposal 0, 1, 2 to make it easier
     }
 
     function vote(uint256 _proposalId)
-        public
+        external
         onlyRegistered
         checkWorkflowStatus(WorkflowStatus.VotingSessionStarted)
     {
@@ -356,7 +342,7 @@ Feature
         emit Voted(msg.sender, _proposalId);
     }
 
-    function countingVotes()
+    function _countingVotes()
         internal
         onlyOwner
         checkWorkflowStatus(WorkflowStatus.VotingSessionEnded)
@@ -375,6 +361,7 @@ Feature
         emit winningProposal(voteSession[sessionId].winningProposalId);
     }
 
+    //public to have one called by the contract and by people
     function getWinner()
         public
         view
@@ -384,8 +371,9 @@ Feature
         return voteSession[sessionId].winningProposalId;
     }
 
+    //external because only people
     function getWinnerDetails()
-        public
+        external
         view
         checkWorkflowStatus(WorkflowStatus.VotesTallied)
         returns (string memory)
@@ -394,9 +382,7 @@ Feature
             "SessionId: ",
             Strings.toString(sessionId),
             "  Resultat: ",
-            voteSessionProposals[sessionId][
-                voteSession[sessionId].winningProposalId
-            ].description
+            voteSessionProposals[sessionId][getWinner()].description
         );
         return message;
     }
