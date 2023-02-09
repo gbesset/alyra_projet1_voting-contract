@@ -28,6 +28,7 @@ contract Voting is Ownable {
     // private because there is a function to get the value protected by a modifier that checks the end of vote
     uint256 private winningProposalId;
     WorkflowStatus public voteStatus;
+    // private because electors are registrerd on whitelist. unauthorized persons cannot see the whitelist. getters are protected by modifiers
     mapping(address => Voter) private whitelist;
     Proposal[] public proposals;
 
@@ -72,7 +73,7 @@ contract Voting is Ownable {
             memory message = "This is not the right period. You should be on: ";
         require(
             _status == voteStatus,
-            string.concat(message, getVoteStatusString(_status))
+            string.concat(message, _getVoteStatusString(_status))
         );
         _;
     }
@@ -82,7 +83,7 @@ contract Voting is Ownable {
             memory message = "You can't change the status if you're not in: ";
         require(
             _status == voteStatus,
-            string.concat(message, getVoteStatusString(_status))
+            string.concat(message, _getVoteStatusString(_status))
         );
         _;
     }
@@ -94,7 +95,7 @@ contract Voting is Ownable {
 */
 
     function authorise(address _address)
-        public
+        external
         onlyOwner
         checkWorkflowStatus(WorkflowStatus.RegisteringVoters)
     {
@@ -107,7 +108,7 @@ contract Voting is Ownable {
     }
 
     function unAuthorise(address _address)
-        public
+        external
         onlyOwner
         checkWorkflowStatus(WorkflowStatus.RegisteringVoters)
     {
@@ -116,12 +117,12 @@ contract Voting is Ownable {
         emit VoterUnRegistered(_address);
     }
 
-    function isWhitelisted(address _address) public view returns (bool) {
+    function isWhitelisted(address _address) external view returns (bool) {
         return whitelist[_address].isRegistered;
     }
 
     function hasVoted(address _address)
-        public
+        external
         view
         onlyRegistered
         onlyRegisteredAddress(_address)
@@ -131,7 +132,7 @@ contract Voting is Ownable {
     }
 
     function votedForProposalId(address _address)
-        public
+        external
         view
         onlyRegistered
         onlyRegisteredAddress(_address)
@@ -147,7 +148,7 @@ contract Voting is Ownable {
 */
 
     function startProposals()
-        public
+        external
         onlyOwner
         checkWorkflowStatusBeforeChange(WorkflowStatus.RegisteringVoters)
     {
@@ -159,7 +160,7 @@ contract Voting is Ownable {
     }
 
     function endProposals()
-        public
+        external
         onlyOwner
         checkWorkflowStatusBeforeChange(
             WorkflowStatus.ProposalsRegistrationStarted
@@ -173,7 +174,7 @@ contract Voting is Ownable {
     }
 
     function startVotes()
-        public
+        external
         onlyOwner
         checkWorkflowStatusBeforeChange(
             WorkflowStatus.ProposalsRegistrationEnded
@@ -187,7 +188,7 @@ contract Voting is Ownable {
     }
 
     function endVotes()
-        public
+        external
         onlyOwner
         checkWorkflowStatusBeforeChange(WorkflowStatus.VotingSessionStarted)
     {
@@ -199,12 +200,12 @@ contract Voting is Ownable {
     }
 
     function countVotes()
-        public
+        external
         onlyOwner
         checkWorkflowStatusBeforeChange(WorkflowStatus.VotingSessionEnded)
     {
         //calculate winning vote
-        countingVotes();
+        _countingVotes();
 
         voteStatus = WorkflowStatus.VotesTallied;
         emit WorkflowStatusChange(
@@ -213,11 +214,11 @@ contract Voting is Ownable {
         );
     }
 
-    function retrieveWorkflowStatus() public view returns (string memory) {
-        return getVoteStatusString(voteStatus);
+    function retrieveWorkflowStatus() external view returns (string memory) {
+        return _getVoteStatusString(voteStatus);
     }
 
-    function getVoteStatusString(WorkflowStatus _status)
+    function _getVoteStatusString(WorkflowStatus _status)
         internal
         pure
         returns (string memory)
@@ -246,7 +247,7 @@ Feature
 */
 
     function sendProposal(string memory _proposal)
-        public
+        external
         onlyRegistered
         checkWorkflowStatus(WorkflowStatus.ProposalsRegistrationStarted)
     {
@@ -255,7 +256,7 @@ Feature
     }
 
     function vote(uint256 _proposalId)
-        public
+        external
         onlyRegistered
         checkWorkflowStatus(WorkflowStatus.VotingSessionStarted)
     {
@@ -270,7 +271,7 @@ Feature
         emit Voted(msg.sender, _proposalId);
     }
 
-    function countingVotes()
+    function _countingVotes()
         internal
         onlyOwner
         checkWorkflowStatus(WorkflowStatus.VotingSessionEnded)
@@ -287,7 +288,7 @@ Feature
     }
 
     function getWinner()
-        public
+        external
         view
         checkWorkflowStatus(WorkflowStatus.VotesTallied)
         returns (uint256)
@@ -296,7 +297,7 @@ Feature
     }
 
     function getWinnerDetails()
-        public
+        external
         view
         checkWorkflowStatus(WorkflowStatus.VotesTallied)
         returns (Proposal memory)
