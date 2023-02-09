@@ -18,6 +18,7 @@ contract Voting is Ownable {
     }
 
     enum WorkflowStatus {
+        VoteToCreate,
         RegisteringVoters,
         ProposalsRegistrationStarted,
         ProposalsRegistrationEnded,
@@ -38,7 +39,7 @@ contract Voting is Ownable {
     uint256 public sessionId;
     mapping(uint256 => VoteSession) voteSession;
     //Passé beaucoup de temps a me casser les dents pour mettre ma whiteList et Proposals dans ma struc en vain....
-    //si possible et une idée je suis preneur. tkx
+    //si meilleur idée que ca (héritage sans doute) je suis preneur. tkx :)
     mapping(uint256 => mapping(address => Voter)) voteSessionWhitelist;
     mapping(uint256 => Proposal[]) public voteSessionProposals;
 
@@ -176,7 +177,11 @@ contract Voting is Ownable {
 ********************************
 */
 
-    function createVoteSession(string memory _name) external onlyOwner {
+    function createVoteSession(string memory _name)
+        external
+        onlyOwner
+        checkWorkflowStatus(WorkflowStatus.VoteToCreate)
+    {
         require(sessionId == 0, "It's not the first session creation....");
         _createVoteSession(_name);
         emit VoteSessionCreated(_name);
@@ -300,6 +305,8 @@ contract Voting is Ownable {
             return "VotingSessionEnded";
         } else if (_status == WorkflowStatus.VotesTallied) {
             return "VotesTallied";
+        } else if (_status == WorkflowStatus.VoteToCreate) {
+            return "VoteToCreate";
         } else {
             return "Unknown status";
         }
@@ -317,7 +324,7 @@ Feature
         checkWorkflowStatus(WorkflowStatus.ProposalsRegistrationStarted)
     {
         voteSessionProposals[sessionId].push(Proposal(_proposal, 0));
-        emit ProposalRegistered(voteSessionProposals[sessionId].length - 1); //we count proposal 0, 1, 2 to make it easier
+        emit ProposalRegistered(voteSessionProposals[sessionId].length); //this time we count 1, 2, 3
     }
 
     function vote(uint256 _proposalId)
@@ -330,14 +337,14 @@ Feature
             "You have already voted"
         );
         require(
-            _proposalId >= 0 &&
-                (voteSessionProposals[sessionId].length - 1) >= _proposalId,
+            _proposalId > 0 &&
+                (voteSessionProposals[sessionId].length) >= _proposalId,
             "The proposalId doesn't exist"
         );
         voteSessionWhitelist[sessionId][msg.sender].hasVoted = true;
         voteSessionWhitelist[sessionId][msg.sender]
             .votedProposalId = _proposalId;
-        voteSessionProposals[sessionId][_proposalId].voteCount++;
+        voteSessionProposals[sessionId][_proposalId - 1].voteCount++; //we have to -1 to get the good one
         voteSession[sessionId].nbVotes++;
         emit Voted(msg.sender, _proposalId);
     }
@@ -357,7 +364,7 @@ Feature
                 winner = i;
             }
         }
-        voteSession[sessionId].winningProposalId = winner;
+        voteSession[sessionId].winningProposalId = winner + 1; //we have to +1 to get the good one
         emit winningProposal(voteSession[sessionId].winningProposalId);
     }
 
@@ -382,8 +389,8 @@ Feature
             "SessionId: ",
             Strings.toString(sessionId),
             "  Resultat: ",
-            voteSessionProposals[sessionId][getWinner()].description
-        );
+            voteSessionProposals[sessionId][getWinner() - 1].description
+        ); //-1 to get the good one
         return message;
     }
 }

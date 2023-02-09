@@ -6,7 +6,7 @@
 
 [x] pas de vote si 0 ou 1 seul  proposal
 
-[ ] id des proposal ne commence pas a 0
+[x] id des proposal ne commence pas a 0
 
 [x] calcul des votes seulement si >50% de votants ont voté
 
