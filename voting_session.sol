@@ -41,7 +41,7 @@ contract Voting is Ownable {
     //Passé beaucoup de temps a me casser les dents pour mettre ma whiteList et Proposals dans ma struc en vain....
     //si meilleur idée que ca (héritage sans doute) je suis preneur. tkx :)
     mapping(uint256 => mapping(address => Voter)) voteSessionWhitelist;
-    mapping(uint256 => Proposal[]) public voteSessionProposals;
+    mapping(uint256 => Proposal[]) voteSessionProposals;
 
     event VoteSessionCreated(string _name);
     event VoterRegistered(address voterAddress);
@@ -99,6 +99,56 @@ contract Voting is Ownable {
 
     /* 
 *******************************
+        getters
+*******************************
+*/
+    function getProposal(uint256 _id)
+        external
+        view
+        onlyRegistered
+        returns (Proposal memory)
+    {
+        return voteSessionProposals[sessionId][_id];
+    }
+
+    //public to have one called by the contract and by people
+    function getWinner()
+        public
+        view
+        checkWorkflowStatus(WorkflowStatus.VotesTallied)
+        returns (uint256)
+    {
+        return voteSession[sessionId].winningProposalId;
+    }
+
+    //external because only people
+    function getWinnerDetails()
+        external
+        view
+        checkWorkflowStatus(WorkflowStatus.VotesTallied)
+        returns (string memory)
+    {
+        string memory message = string.concat(
+            "SessionId: ",
+            Strings.toString(sessionId),
+            "  Resultat: ",
+            voteSessionProposals[sessionId][getWinner() - 1].description
+        ); //-1 to get the good one
+        return message;
+    }
+
+    function getVoterDetails(address _address)
+        external
+        view
+        onlyRegistered
+        onlyRegisteredAddress(_address)
+        returns (Voter memory)
+    {
+        return voteSessionWhitelist[sessionId][_address];
+    }
+
+    /* 
+*******************************
         voteSession management
 *******************************
 */
@@ -145,30 +195,6 @@ contract Voting is Ownable {
         voteSessionWhitelist[sessionId][_address].isRegistered = false;
         voteSession[sessionId].nbElector--;
         emit VoterUnRegistered(_address);
-    }
-
-    function isWhitelisted(address _address) external view returns (bool) {
-        return voteSessionWhitelist[sessionId][_address].isRegistered;
-    }
-
-    function hasVoted(address _address)
-        external
-        view
-        onlyRegistered
-        onlyRegisteredAddress(_address)
-        returns (bool)
-    {
-        return voteSessionWhitelist[sessionId][_address].hasVoted;
-    }
-
-    function votedForProposalId(address _address)
-        external
-        view
-        onlyRegistered
-        onlyRegisteredAddress(_address)
-        returns (uint256)
-    {
-        return voteSessionWhitelist[sessionId][_address].votedProposalId;
     }
 
     /*
@@ -323,6 +349,10 @@ Feature
         onlyRegistered
         checkWorkflowStatus(WorkflowStatus.ProposalsRegistrationStarted)
     {
+        require(
+            keccak256(abi.encode(_proposal)) != keccak256(abi.encode("")),
+            "Proposal can't be empty"
+        );
         voteSessionProposals[sessionId].push(Proposal(_proposal, 0));
         emit ProposalRegistered(voteSessionProposals[sessionId].length); //this time we count 1, 2, 3
     }
@@ -366,31 +396,5 @@ Feature
         }
         voteSession[sessionId].winningProposalId = winner + 1; //we have to +1 to get the good one
         emit winningProposal(voteSession[sessionId].winningProposalId);
-    }
-
-    //public to have one called by the contract and by people
-    function getWinner()
-        public
-        view
-        checkWorkflowStatus(WorkflowStatus.VotesTallied)
-        returns (uint256)
-    {
-        return voteSession[sessionId].winningProposalId;
-    }
-
-    //external because only people
-    function getWinnerDetails()
-        external
-        view
-        checkWorkflowStatus(WorkflowStatus.VotesTallied)
-        returns (string memory)
-    {
-        string memory message = string.concat(
-            "SessionId: ",
-            Strings.toString(sessionId),
-            "  Resultat: ",
-            voteSessionProposals[sessionId][getWinner() - 1].description
-        ); //-1 to get the good one
-        return message;
     }
 }
