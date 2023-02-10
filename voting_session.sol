@@ -38,9 +38,9 @@ contract Voting is Ownable {
     // current voting session ID
     uint256 public sessionId;
     mapping(uint256 => VoteSession) voteSession;
-    //Passé beaucoup de temps a me casser les dents pour mettre ma whiteList et Proposals dans ma struc en vain....
+    //Passé beaucoup de temps a me casser les dents pour mettre ma voterList et Proposals dans ma struc en vain....
     //si meilleur idée que ca (héritage sans doute) je suis preneur. tkx :)
-    mapping(uint256 => mapping(address => Voter)) voteSessionWhitelist;
+    mapping(uint256 => mapping(address => Voter)) voteSessionVotersList;
     mapping(uint256 => Proposal[]) voteSessionProposals;
 
     event VoteSessionCreated(string _name);
@@ -63,7 +63,7 @@ contract Voting is Ownable {
 
     modifier onlyRegistered() {
         require(
-            voteSessionWhitelist[sessionId][msg.sender].isRegistered,
+            voteSessionVotersList[sessionId][msg.sender].isRegistered,
             "You are not registered"
         );
         _;
@@ -71,7 +71,7 @@ contract Voting is Ownable {
 
     modifier onlyRegisteredAddress(address _address) {
         require(
-            voteSessionWhitelist[sessionId][_address].isRegistered,
+            voteSessionVotersList[sessionId][_address].isRegistered,
             "this address is not registered"
         );
         _;
@@ -144,7 +144,7 @@ contract Voting is Ownable {
         onlyRegisteredAddress(_address)
         returns (Voter memory)
     {
-        return voteSessionWhitelist[sessionId][_address];
+        return voteSessionVotersList[sessionId][_address];
     }
 
     /* 
@@ -165,7 +165,7 @@ contract Voting is Ownable {
 
     /* 
 *******************************
-        Whitelist management
+        Voters management
 *******************************
 */
 
@@ -175,10 +175,10 @@ contract Voting is Ownable {
         checkWorkflowStatus(WorkflowStatus.RegisteringVoters)
     {
         require(
-            !voteSessionWhitelist[sessionId][_address].isRegistered,
+            !voteSessionVotersList[sessionId][_address].isRegistered,
             "Address is already registered"
         );
-        voteSessionWhitelist[sessionId][_address].isRegistered = true;
+        voteSessionVotersList[sessionId][_address].isRegistered = true;
         voteSession[sessionId].nbElector++;
         emit VoterRegistered(_address);
     }
@@ -189,10 +189,10 @@ contract Voting is Ownable {
         checkWorkflowStatus(WorkflowStatus.RegisteringVoters)
     {
         require(
-            voteSessionWhitelist[sessionId][_address].isRegistered,
+            voteSessionVotersList[sessionId][_address].isRegistered,
             "Address is not registered"
         );
-        voteSessionWhitelist[sessionId][_address].isRegistered = false;
+        voteSessionVotersList[sessionId][_address].isRegistered = false;
         voteSession[sessionId].nbElector--;
         emit VoterUnRegistered(_address);
     }
@@ -340,7 +340,7 @@ contract Voting is Ownable {
 
     /*
 ******************
-Feature
+    Vote Feature
 *****************
 */
 
@@ -363,7 +363,7 @@ Feature
         checkWorkflowStatus(WorkflowStatus.VotingSessionStarted)
     {
         require(
-            !voteSessionWhitelist[sessionId][msg.sender].hasVoted,
+            !voteSessionVotersList[sessionId][msg.sender].hasVoted,
             "You have already voted"
         );
         require(
@@ -371,8 +371,8 @@ Feature
                 (voteSessionProposals[sessionId].length) >= _proposalId,
             "The proposalId doesn't exist"
         );
-        voteSessionWhitelist[sessionId][msg.sender].hasVoted = true;
-        voteSessionWhitelist[sessionId][msg.sender]
+        voteSessionVotersList[sessionId][msg.sender].hasVoted = true;
+        voteSessionVotersList[sessionId][msg.sender]
             .votedProposalId = _proposalId;
         voteSessionProposals[sessionId][_proposalId - 1].voteCount++; //we have to -1 to get the good one
         voteSession[sessionId].nbVotes++;
