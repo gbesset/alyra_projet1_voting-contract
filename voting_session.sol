@@ -38,10 +38,10 @@ contract Voting is Ownable {
     // current voting session ID
     uint256 public sessionId;
     mapping(uint256 => VoteSession) voteSession;
-    //Passé beaucoup de temps a me casser les dents pour mettre ma whiteList et Proposals dans ma struc en vain....
+    //Passé beaucoup de temps a me casser les dents pour mettre ma voterList et Proposals dans ma struc en vain....
     //si meilleur idée que ca (héritage sans doute) je suis preneur. tkx :)
-    mapping(uint256 => mapping(address => Voter)) voteSessionWhitelist;
-    mapping(uint256 => Proposal[]) public voteSessionProposals;
+    mapping(uint256 => mapping(address => Voter)) voteSessionVotersList;
+    mapping(uint256 => Proposal[]) voteSessionProposals;
 
     event VoteSessionCreated(string _name);
     event VoterRegistered(address voterAddress);
@@ -63,7 +63,7 @@ contract Voting is Ownable {
 
     modifier onlyRegistered() {
         require(
-            voteSessionWhitelist[sessionId][msg.sender].isRegistered,
+            voteSessionVotersList[sessionId][msg.sender].isRegistered,
             "You are not registered"
         );
         _;
@@ -71,7 +71,7 @@ contract Voting is Ownable {
 
     modifier onlyRegisteredAddress(address _address) {
         require(
-            voteSessionWhitelist[sessionId][_address].isRegistered,
+            voteSessionVotersList[sessionId][_address].isRegistered,
             "this address is not registered"
         );
         _;
@@ -99,6 +99,56 @@ contract Voting is Ownable {
 
     /* 
 *******************************
+        getters
+*******************************
+*/
+    function getProposal(uint256 _id)
+        external
+        view
+        onlyRegistered
+        returns (Proposal memory)
+    {
+        return voteSessionProposals[sessionId][_id];
+    }
+
+    //public to have one called by the contract and by people
+    function getWinner()
+        public
+        view
+        checkWorkflowStatus(WorkflowStatus.VotesTallied)
+        returns (uint256)
+    {
+        return voteSession[sessionId].winningProposalId;
+    }
+
+    //external because only people
+    function getWinnerDetails()
+        external
+        view
+        checkWorkflowStatus(WorkflowStatus.VotesTallied)
+        returns (string memory)
+    {
+        string memory message = string.concat(
+            "SessionId: ",
+            Strings.toString(sessionId),
+            "  Resultat: ",
+            voteSessionProposals[sessionId][getWinner() - 1].description
+        ); //-1 to get the good one
+        return message;
+    }
+
+    function getVoterDetails(address _address)
+        external
+        view
+        onlyRegistered
+        onlyRegisteredAddress(_address)
+        returns (Voter memory)
+    {
+        return voteSessionVotersList[sessionId][_address];
+    }
+
+    /* 
+*******************************
         voteSession management
 *******************************
 */
@@ -115,7 +165,7 @@ contract Voting is Ownable {
 
     /* 
 *******************************
-        Whitelist management
+        Voters management
 *******************************
 */
 
@@ -125,10 +175,10 @@ contract Voting is Ownable {
         checkWorkflowStatus(WorkflowStatus.RegisteringVoters)
     {
         require(
-            !voteSessionWhitelist[sessionId][_address].isRegistered,
+            !voteSessionVotersList[sessionId][_address].isRegistered,
             "Address is already registered"
         );
-        voteSessionWhitelist[sessionId][_address].isRegistered = true;
+        voteSessionVotersList[sessionId][_address].isRegistered = true;
         voteSession[sessionId].nbElector++;
         emit VoterRegistered(_address);
     }
@@ -139,36 +189,12 @@ contract Voting is Ownable {
         checkWorkflowStatus(WorkflowStatus.RegisteringVoters)
     {
         require(
-            voteSessionWhitelist[sessionId][_address].isRegistered,
+            voteSessionVotersList[sessionId][_address].isRegistered,
             "Address is not registered"
         );
-        voteSessionWhitelist[sessionId][_address].isRegistered = false;
+        voteSessionVotersList[sessionId][_address].isRegistered = false;
         voteSession[sessionId].nbElector--;
         emit VoterUnRegistered(_address);
-    }
-
-    function isWhitelisted(address _address) external view returns (bool) {
-        return voteSessionWhitelist[sessionId][_address].isRegistered;
-    }
-
-    function hasVoted(address _address)
-        external
-        view
-        onlyRegistered
-        onlyRegisteredAddress(_address)
-        returns (bool)
-    {
-        return voteSessionWhitelist[sessionId][_address].hasVoted;
-    }
-
-    function votedForProposalId(address _address)
-        external
-        view
-        onlyRegistered
-        onlyRegisteredAddress(_address)
-        returns (uint256)
-    {
-        return voteSessionWhitelist[sessionId][_address].votedProposalId;
     }
 
     /*
@@ -314,7 +340,7 @@ contract Voting is Ownable {
 
     /*
 ******************
-Feature
+    Vote Feature
 *****************
 */
 
@@ -323,6 +349,10 @@ Feature
         onlyRegistered
         checkWorkflowStatus(WorkflowStatus.ProposalsRegistrationStarted)
     {
+        require(
+            keccak256(abi.encode(_proposal)) != keccak256(abi.encode("")),
+            "Proposal can't be empty"
+        );
         voteSessionProposals[sessionId].push(Proposal(_proposal, 0));
         emit ProposalRegistered(voteSessionProposals[sessionId].length); //this time we count 1, 2, 3
     }
@@ -333,7 +363,7 @@ Feature
         checkWorkflowStatus(WorkflowStatus.VotingSessionStarted)
     {
         require(
-            !voteSessionWhitelist[sessionId][msg.sender].hasVoted,
+            !voteSessionVotersList[sessionId][msg.sender].hasVoted,
             "You have already voted"
         );
         require(
@@ -341,8 +371,8 @@ Feature
                 (voteSessionProposals[sessionId].length) >= _proposalId,
             "The proposalId doesn't exist"
         );
-        voteSessionWhitelist[sessionId][msg.sender].hasVoted = true;
-        voteSessionWhitelist[sessionId][msg.sender]
+        voteSessionVotersList[sessionId][msg.sender].hasVoted = true;
+        voteSessionVotersList[sessionId][msg.sender]
             .votedProposalId = _proposalId;
         voteSessionProposals[sessionId][_proposalId - 1].voteCount++; //we have to -1 to get the good one
         voteSession[sessionId].nbVotes++;
@@ -366,31 +396,5 @@ Feature
         }
         voteSession[sessionId].winningProposalId = winner + 1; //we have to +1 to get the good one
         emit winningProposal(voteSession[sessionId].winningProposalId);
-    }
-
-    //public to have one called by the contract and by people
-    function getWinner()
-        public
-        view
-        checkWorkflowStatus(WorkflowStatus.VotesTallied)
-        returns (uint256)
-    {
-        return voteSession[sessionId].winningProposalId;
-    }
-
-    //external because only people
-    function getWinnerDetails()
-        external
-        view
-        checkWorkflowStatus(WorkflowStatus.VotesTallied)
-        returns (string memory)
-    {
-        string memory message = string.concat(
-            "SessionId: ",
-            Strings.toString(sessionId),
-            "  Resultat: ",
-            voteSessionProposals[sessionId][getWinner() - 1].description
-        ); //-1 to get the good one
-        return message;
     }
 }

@@ -28,9 +28,9 @@ contract Voting is Ownable {
     // private because there is a function to get the value protected by a modifier that checks the end of vote
     uint256 private winningProposalId;
     WorkflowStatus public voteStatus;
-    // private because electors are registrerd on whitelist. unauthorized persons cannot see the whitelist. getters are protected by modifiers
-    mapping(address => Voter) private whitelist;
-    Proposal[] public proposals;
+    // private because electors are registrerd on votersList. unauthorized persons cannot see the votersList. getters are protected by modifiers
+    mapping(address => Voter) private votersList;
+    Proposal[] private proposals;
 
     event VoterRegistered(address voterAddress);
     event WorkflowStatusChange(
@@ -45,7 +45,7 @@ contract Voting is Ownable {
 
     constructor() {
         // Active the period RegisteringVoters  when contract is deployed. No admin function to do it
-        // admin is not whitelist by default. just an admin
+        // admin is not votersList by default. just an admin
         voteStatus = WorkflowStatus.RegisteringVoters;
     }
 
@@ -56,13 +56,13 @@ contract Voting is Ownable {
 */
 
     modifier onlyRegistered() {
-        require(whitelist[msg.sender].isRegistered, "You are not registered");
+        require(votersList[msg.sender].isRegistered, "You are not registered");
         _;
     }
 
     modifier onlyRegisteredAddress(address _address) {
         require(
-            whitelist[_address].isRegistered,
+            votersList[_address].isRegistered,
             "this address is not registered"
         );
         _;
@@ -90,7 +90,49 @@ contract Voting is Ownable {
 
     /* 
 *******************************
-        Whitelist management
+        getters
+*******************************
+*/
+    function getProposal(uint256 _id)
+        external
+        view
+        onlyRegistered
+        returns (Proposal memory)
+    {
+        return proposals[_id];
+    }
+
+    function getWinner()
+        external
+        view
+        checkWorkflowStatus(WorkflowStatus.VotesTallied)
+        returns (uint256)
+    {
+        return winningProposalId;
+    }
+
+    function getWinnerDetails()
+        external
+        view
+        checkWorkflowStatus(WorkflowStatus.VotesTallied)
+        returns (Proposal memory)
+    {
+        return proposals[winningProposalId];
+    }
+
+    function getVoterDetails(address _address)
+        external
+        view
+        onlyRegistered
+        onlyRegisteredAddress(_address)
+        returns (Voter memory)
+    {
+        return votersList[_address];
+    }
+
+    /* 
+*******************************
+        Voters management
 *******************************
 */
 
@@ -100,10 +142,10 @@ contract Voting is Ownable {
         checkWorkflowStatus(WorkflowStatus.RegisteringVoters)
     {
         require(
-            !whitelist[_address].isRegistered,
+            !votersList[_address].isRegistered,
             "Address is already registered"
         );
-        whitelist[_address].isRegistered = true;
+        votersList[_address].isRegistered = true;
         emit VoterRegistered(_address);
     }
 
@@ -112,33 +154,9 @@ contract Voting is Ownable {
         onlyOwner
         checkWorkflowStatus(WorkflowStatus.RegisteringVoters)
     {
-        require(whitelist[_address].isRegistered, "Address is not registered");
-        whitelist[_address].isRegistered = false;
+        require(votersList[_address].isRegistered, "Address is not registered");
+        votersList[_address].isRegistered = false;
         emit VoterUnRegistered(_address);
-    }
-
-    function isWhitelisted(address _address) external view returns (bool) {
-        return whitelist[_address].isRegistered;
-    }
-
-    function hasVoted(address _address)
-        external
-        view
-        onlyRegistered
-        onlyRegisteredAddress(_address)
-        returns (bool)
-    {
-        return whitelist[_address].hasVoted;
-    }
-
-    function votedForProposalId(address _address)
-        external
-        view
-        onlyRegistered
-        onlyRegisteredAddress(_address)
-        returns (uint256)
-    {
-        return whitelist[_address].votedProposalId;
     }
 
     /*
@@ -242,7 +260,7 @@ contract Voting is Ownable {
 
     /*
 ******************
-Feature
+    Vote Feature
 *****************
 */
 
@@ -251,6 +269,10 @@ Feature
         onlyRegistered
         checkWorkflowStatus(WorkflowStatus.ProposalsRegistrationStarted)
     {
+        require(
+            keccak256(abi.encode(_proposal)) != keccak256(abi.encode("")),
+            "Proposal can't be empty"
+        );
         proposals.push(Proposal(_proposal, 0));
         emit ProposalRegistered(proposals.length - 1); // we count proposal 0, 1, 2 to make it easier
     }
@@ -260,13 +282,13 @@ Feature
         onlyRegistered
         checkWorkflowStatus(WorkflowStatus.VotingSessionStarted)
     {
-        require(!whitelist[msg.sender].hasVoted, "You have already voted");
+        require(!votersList[msg.sender].hasVoted, "You have already voted");
         require(
             _proposalId >= 0 && (proposals.length - 1) >= _proposalId,
             "The proposalId doesn't exist"
         );
-        whitelist[msg.sender].hasVoted = true;
-        whitelist[msg.sender].votedProposalId = _proposalId;
+        votersList[msg.sender].hasVoted = true;
+        votersList[msg.sender].votedProposalId = _proposalId;
         proposals[_proposalId].voteCount++;
         emit Voted(msg.sender, _proposalId);
     }
@@ -285,23 +307,5 @@ Feature
         }
         winningProposalId = winner;
         emit winningProposal(winningProposalId);
-    }
-
-    function getWinner()
-        external
-        view
-        checkWorkflowStatus(WorkflowStatus.VotesTallied)
-        returns (uint256)
-    {
-        return winningProposalId;
-    }
-
-    function getWinnerDetails()
-        external
-        view
-        checkWorkflowStatus(WorkflowStatus.VotesTallied)
-        returns (Proposal memory)
-    {
-        return proposals[winningProposalId];
     }
 }
